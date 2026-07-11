@@ -5,6 +5,9 @@ import morgan from 'morgan';
 import { errorHandler } from './middlewares/errorHandler.js';
 import authRoutes from './routes/auth.routes.js';
 import calculatorRoutes, { adminCalculatorRouter } from './routes/calculator.routes.js';
+import blogRoutes from './routes/blog.routes.js';
+import categoryRoutes from './routes/category.routes.js';
+import contentRoutes from './routes/content.routes.js';
 
 const app = express();
 
@@ -24,6 +27,11 @@ app.get('/api/v1/health', (req, res) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/calculators', calculatorRoutes);
 app.use('/api/v1/admin/calculators', adminCalculatorRouter);
+app.use('/api/v1/blogs', blogRoutes);
+app.use('/api/v1/admin/blogs', blogRoutes);
+app.use('/api/v1/categories', categoryRoutes);
+app.use('/api/v1/admin/categories', categoryRoutes);
+app.use('/api/v1/admin/content', contentRoutes);
 
 app.use(errorHandler);
 
