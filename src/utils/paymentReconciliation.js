@@ -3,7 +3,7 @@ import PincodeReservation from '../models/PincodeReservation.js';
 import { confirmPincodeLock } from './pincodeLock.js';
 
 export const markLeadPaid = async ({ bookingId, orderId, paymentId, signature }) => {
-  const setFields = { status: 'paid' };
+  const setFields = { status: 'paid', leadCallStatus: 'not_required' };
   if (orderId) setFields['razorpay.orderId'] = orderId;
   if (paymentId) setFields['razorpay.paymentId'] = paymentId;
   if (signature) setFields['razorpay.signature'] = signature;
