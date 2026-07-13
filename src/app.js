@@ -8,6 +8,7 @@ import calculatorRoutes, { adminCalculatorRouter } from './routes/calculator.rou
 import blogRoutes from './routes/blog.routes.js';
 import categoryRoutes from './routes/category.routes.js';
 import contentRoutes from './routes/content.routes.js';
+import distributorRoutes from './routes/distributor.routes.js';
 
 const app = express();
 
@@ -17,7 +18,10 @@ app.use(cors({
   credentials: true,
 }));
 app.use(morgan('dev'));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => { req.rawBody = buf; },
+}));
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/api/v1/health', (req, res) => {
@@ -32,6 +36,7 @@ app.use('/api/v1/admin/blogs', blogRoutes);
 app.use('/api/v1/categories', categoryRoutes);
 app.use('/api/v1/admin/categories', categoryRoutes);
 app.use('/api/v1/admin/content', contentRoutes);
+app.use('/api/v1/distributor', distributorRoutes);
 
 app.use(errorHandler);
 

@@ -14,4 +14,18 @@ export const config = {
     bucketName: process.env.R2_BUCKET_NAME || 'cashlo-media',
     publicUrl: process.env.R2_PUBLIC_URL,
   },
+  smtp: {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: Number(process.env.SMTP_PORT) || 587,
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+    fromName: process.env.SMTP_FROM_NAME || 'Cashlo',
+  },
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID,
+    keySecret: process.env.RAZORPAY_KEY_SECRET,
+    // Configured separately in the Razorpay dashboard under Webhooks —
+    // different secret than keySecret above. See HLD Section 4b.
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
+  },
 };
