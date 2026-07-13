@@ -9,4 +9,4 @@ router.get('/me', protect, getMe);
 router.post('/change-password', protect, changePassword);
 router.post('/users', protect, restrictTo('admin'), createUser);
 
-export default router;
+export default router; 

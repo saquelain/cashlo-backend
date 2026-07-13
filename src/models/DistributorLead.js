@@ -102,7 +102,7 @@ const distributorLeadSchema = new mongoose.Schema(
     gst: {
       baseAmount: Number,
       gstAmount: Number,
-      totalAmount: { type: Number, default: 1100 }, // ₹1,100 inclusive — never charge extra on top
+      totalAmount: Number, // set explicitly by createOrder once a real order exists — never defaulted here
     },
 
     // For the admin "call this lead" queue — covers both ordinary payment
