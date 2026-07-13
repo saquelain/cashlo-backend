@@ -10,6 +10,12 @@ const razorpay = new Razorpay({
 export const createRazorpayOrder = ({ amount, currency = 'INR', receipt, notes }) =>
   razorpay.orders.create({ amount, currency, receipt, notes });
 
+// Used by the reconciliation cron — asks Razorpay directly what actually
+// happened to an order, bypassing the webhook entirely. This is the backstop
+// for the rare case where BOTH the client callback and the webhook failed
+// to reach us (e.g. server was mid-redeploy at the wrong moment).
+export const fetchOrderPayments = (orderId) => razorpay.orders.fetchPayments(orderId);
+
 // Client-side checkout callback verification — HMAC over "orderId|paymentId"
 // using the API key secret. This alone is NOT trusted as the source of truth
 // (see HLD Step 7a/7b) — it's UX-only, the webhook below is authoritative.
