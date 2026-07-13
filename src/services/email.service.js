@@ -8,10 +8,11 @@ import { config } from '../config/environment.js';
 const transporter = nodemailer.createTransport({
   host: config.smtp.host,
   port: config.smtp.port,
-  secure: config.smtp.port === 465, // true for port 465, false for 587 (STARTTLS)
+  secure: config.smtp.port === 465,
+  family: 4, // force IPv4 — Render's network has broken/partial IPv6 routing to Gmail
   auth: {
     user: config.smtp.user,
-    pass: config.smtp.pass, // Gmail App Password, NOT the account login password
+    pass: config.smtp.pass,
   },
 });
 
