@@ -9,6 +9,7 @@ import blogRoutes from './routes/blog.routes.js';
 import categoryRoutes from './routes/category.routes.js';
 import contentRoutes from './routes/content.routes.js';
 import distributorRoutes from './routes/distributor.routes.js';
+import distributorAdminRoutes from './routes/distributorAdmin.routes.js';
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use('/api/v1/categories', categoryRoutes);
 app.use('/api/v1/admin/categories', categoryRoutes);
 app.use('/api/v1/admin/content', contentRoutes);
 app.use('/api/v1/distributor', distributorRoutes);
+app.use('/api/v1/admin/distributor', distributorAdminRoutes);
 
 app.use(errorHandler);
 

@@ -2,6 +2,39 @@ import User from '../models/User.js';
 import { signToken } from '../utils/jwt.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
+const ALLOWED_ROLES = ['admin', 'editor', 'sales'];
+
+// POST /api/v1/auth/users — admin only, creates a new user with any role
+export const createUser = asyncHandler(async (req, res) => {
+  const { name, email, password, role } = req.body;
+
+  if (!name || !email || !password || !role) {
+    const error = new Error('name, email, password, and role are required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!ALLOWED_ROLES.includes(role)) {
+    const error = new Error(`role must be one of: ${ALLOWED_ROLES.join(', ')}`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const existing = await User.findOne({ email: email.toLowerCase().trim() });
+  if (existing) {
+    const error = new Error('A user with this email already exists');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const user = await User.create({ name, email: email.toLowerCase().trim(), password, role });
+
+  res.status(201).json({
+    success: true,
+    data: { _id: user._id, name: user.name, email: user.email, role: user.role },
+  });
+});
+
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
