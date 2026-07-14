@@ -71,6 +71,59 @@ export const checkPincode = asyncHandler(async (req, res) => {
   });
 });
 
+// POST /api/v1/distributor/nearby-pincodes
+// "Nearby" = same district — no lat/long data is stored (dropped during
+// import, see PincodeMaster notes), so this is administratively nearby,
+// not geographically precise.
+export const getNearbyPincodes = asyncHandler(async (req, res) => {
+  const { pincode } = req.body;
+
+  if (!pincode || !PINCODE_REGEX.test(pincode)) {
+    const error = new Error('Please provide a valid 6-digit pincode');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const master = await PincodeMaster.findOne({ pincode });
+  if (!master) {
+    const error = new Error('This pincode was not found in our serviceable areas');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const CANDIDATE_POOL_SIZE = 30;
+  const SUGGESTION_LIMIT = 5;
+
+  const candidates = await PincodeMaster.find({
+    district: master.district,
+    statename: master.statename,
+    pincode: { $ne: pincode },
+  })
+    .limit(CANDIDATE_POOL_SIZE)
+    .select('pincode district statename');
+
+  if (!candidates.length) {
+    return res.status(200).json({ success: true, data: [] });
+  }
+
+  const candidatePincodes = candidates.map((c) => c.pincode);
+  const now = new Date();
+
+  const unavailableReservations = await PincodeReservation.find({
+    pincode: { $in: candidatePincodes },
+    $or: [{ status: 'confirmed' }, { status: 'locked', expiresAt: { $gt: now } }],
+  }).select('pincode');
+
+  const unavailableSet = new Set(unavailableReservations.map((r) => r.pincode));
+
+  const suggestions = candidates
+    .filter((c) => !unavailableSet.has(c.pincode))
+    .slice(0, SUGGESTION_LIMIT)
+    .map((c) => ({ pincode: c.pincode, district: c.district, state: c.statename }));
+
+  res.status(200).json({ success: true, data: suggestions });
+});
+
 // POST /api/v1/distributor/send-otp
 // Creates/updates the DistributorLead, sends a fresh OTP. No pincode lock is
 // taken here — that happens later, after OTP verification (Step 4 in the HLD).
