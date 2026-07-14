@@ -1,6 +1,7 @@
 import DistributorLead from '../models/DistributorLead.js';
 import PincodeReservation from '../models/PincodeReservation.js';
 import { confirmPincodeLock } from './pincodeLock.js';
+import { sendPaymentConfirmationEmail } from '../services/email.service.js';
 
 export const markLeadPaid = async ({ bookingId, orderId, paymentId, signature }) => {
   const setFields = { status: 'paid', leadCallStatus: 'not_required' };
@@ -20,6 +21,18 @@ export const markLeadPaid = async ({ bookingId, orderId, paymentId, signature })
 
   if (reservation && String(reservation.bookingId) === String(lead._id)) {
     await confirmPincodeLock({ pincode: lead.pincode, bookingId: lead._id });
+
+    // Fire-and-log, never blocks the payment confirmation itself
+    await sendPaymentConfirmationEmail({
+      to: lead.email,
+      name: lead.name,
+      pincode: lead.pincode,
+      district: lead.district,
+      state: lead.state,
+      amount: lead.gst?.totalAmount ?? lead.razorpay?.amount,
+      paymentId: lead.razorpay?.paymentId,
+    });
+
     return { lead, lockLost: false };
   }
 
