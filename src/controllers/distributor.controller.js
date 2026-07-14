@@ -12,7 +12,7 @@ import { createRazorpayOrder, verifyPaymentSignature, verifyWebhookSignature } f
 import { config } from '../config/environment.js';
 
 const PINCODE_REGEX = /^\d{6}$/;
-const REQUIRED_CONSENTS = ['nonRefundable', 'terms', 'kyc', 'genuineMerchants'];
+const REQUIRED_CONSENTS = ['nonRefundable', 'terms', 'kyc', 'genuineMerchants', 'policyViolation'];
 const MAX_OTP_ATTEMPTS = 5;
 const OTP_VALIDITY_MS = 5 * 60 * 1000;
 const BOOKING_AMOUNT_PAISE = 110000; // ₹1,100, inclusive of GST — never charge extra on top

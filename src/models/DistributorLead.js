@@ -55,6 +55,7 @@ const distributorLeadSchema = new mongoose.Schema(
       terms: { type: Boolean, default: false },
       kyc: { type: Boolean, default: false },
       genuineMerchants: { type: Boolean, default: false },
+      policyViolation: { type: Boolean, default: false },
     },
 
     // select: false — OTP hash should never come back on a normal .find(),
