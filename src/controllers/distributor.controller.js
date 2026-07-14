@@ -333,6 +333,7 @@ export const createOrder = asyncHandler(async (req, res) => {
       currency: 'INR',
       keyId: config.razorpay.keyId,
       bookingId: lead._id,
+      gst: { baseAmount, gstAmount, totalAmount: BOOKING_AMOUNT_PAISE },
     },
   });
 });
