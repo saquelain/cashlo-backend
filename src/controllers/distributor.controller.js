@@ -106,6 +106,25 @@ export const sendOtp = asyncHandler(async (req, res) => {
 
   const normalizedEmail = email.trim().toLowerCase();
 
+  // One distributor = one PIN code, for life. Checked on EITHER email or
+  // mobile matching an existing PAID lead — blocks the obvious workaround of
+  // reusing one identifier with a different other. Deliberately excludes
+  // 'lock_lost' leads: those already paid but didn't end up with a pincode,
+  // and are handled separately via manual outreach (see HLD Section 5) —
+  // this rule shouldn't lock them out while that's still being resolved.
+  const existingPaidLead = await DistributorLead.findOne({
+    status: 'paid',
+    $or: [{ email: normalizedEmail }, { mobile }],
+  });
+
+  if (existingPaidLead) {
+    const error = new Error(
+      `You have already reserved PIN Code ${existingPaidLead.pincode}. Only one PIN Code reservation is allowed per distributor.`
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+
   // Layer 2 rate limit — identifier-based, survives restarts (Section 4a of the HLD)
   await checkOtpRateLimit(normalizedEmail);
 
@@ -122,7 +141,7 @@ export const sendOtp = asyncHandler(async (req, res) => {
   let lead = await DistributorLead.findOne({
     email: normalizedEmail,
     pincode,
-    status: { $in: ['form_submitted', 'otp_sent'] },
+    status: { $nin: ['paid', 'failed', 'expired', 'lock_lost'] },
   });
 
   if (lead) {
