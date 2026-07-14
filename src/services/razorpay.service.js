@@ -8,7 +8,7 @@ const razorpay = new Razorpay({
 });
 
 export const createRazorpayOrder = ({ amount, currency = 'INR', receipt, notes }) =>
-  razorpay.orders.create({ amount, currency, receipt, notes });
+  razorpay.orders.create({ amount, currency, receipt, notes, payment_capture: 1, });
 
 // Used by the reconciliation cron — asks Razorpay directly what actually
 // happened to an order, bypassing the webhook entirely. This is the backstop
