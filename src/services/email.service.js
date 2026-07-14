@@ -39,7 +39,7 @@ export const sendOtpEmail = async ({ to, name, otp }) => {
   }
 };
 
-export const sendPaymentConfirmationEmail = async ({ to, name, pincode, district, state, amount, paymentId }) => {
+export const sendPaymentConfirmationEmail = async ({ to, name, pincode, district, state, amount, paymentId, receiptUrl }) => {
   try {
     await transporter.sendMail({
       from: `"${config.smtp.fromName}" <${config.smtp.user}>`,
@@ -51,6 +51,7 @@ export const sendPaymentConfirmationEmail = async ({ to, name, pincode, district
           <p>Your PIN Code <strong>${pincode}</strong> (${district}, ${state}) has been successfully reserved. This territory is now exclusively assigned to you — no other distributor can reserve this PIN Code.</p>
           <p><strong>Amount Paid:</strong> ₹${(amount / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}<br/>
           <strong>Payment ID:</strong> ${paymentId}</p>
+          ${receiptUrl ? `<p><a href="${receiptUrl}" style="color: #445df0;">Download your receipt (PDF)</a></p>` : ''}
           <p>Our team will contact you shortly for onboarding and KYC.</p>
           <p style="color: #888; font-size: 12px; margin-top: 24px;">This is an automated confirmation from Cashlo. For queries, contact support@cashlo.in.</p>
         </div>

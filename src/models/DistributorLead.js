@@ -113,6 +113,10 @@ const distributorLeadSchema = new mongoose.Schema(
       enum: ['not_required', 'pending_call', 'called', 'converted'],
       default: 'not_required',
     },
+    receiptUrl: {
+      type: String,
+      default: '',
+    },
     lostReason: {
       type: String,
       trim: true,
