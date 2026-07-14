@@ -10,6 +10,7 @@ import { acquirePincodeLock } from '../utils/pincodeLock.js';
 import { markLeadPaid } from '../utils/paymentReconciliation.js';
 import { createRazorpayOrder, verifyPaymentSignature, verifyWebhookSignature } from '../services/razorpay.service.js';
 import { config } from '../config/environment.js';
+import WebhookLog from '../models/WebhookLog.js';
 
 const PINCODE_REGEX = /^\d{6}$/;
 const REQUIRED_CONSENTS = ['nonRefundable', 'terms', 'kyc', 'genuineMerchants', 'policyViolation'];
@@ -448,54 +449,88 @@ export const razorpayWebhook = asyncHandler(async (req, res) => {
   const signature = req.headers['x-razorpay-signature'];
 
   if (!signature || !req.rawBody) {
-    // Deliberately 400, not 500 — this is a malformed/unsigned request, not
-    // a server error. Do NOT process the body if we can't verify it.
+    await WebhookLog.create({
+      signatureValid: false,
+      processingStatus: 'invalid_signature',
+      processingNote: 'Missing signature header or raw body',
+    });
     return res.status(400).json({ success: false, message: 'Missing signature or raw body' });
   }
 
   const isValid = verifyWebhookSignature(req.rawBody, signature);
+
   if (!isValid) {
+    await WebhookLog.create({
+      signatureValid: false,
+      processingStatus: 'invalid_signature',
+      payload: req.body,
+      processingNote: 'Signature verification failed',
+    });
     return res.status(400).json({ success: false, message: 'Invalid webhook signature' });
   }
 
   const event = req.body;
   const eventType = event.event;
+  let relatedBookingId = null;
+  let processingStatus = 'ignored';
+  let processingNote = `Unhandled event type: ${eventType}`;
 
   if (eventType === 'payment.captured') {
     const payment = event.payload?.payment?.entity;
     const bookingId = payment?.notes?.bookingId;
 
     if (!bookingId || !mongoose.isValidObjectId(bookingId)) {
-      // Shouldn't happen if notes were set correctly at order creation —
-      // ack the webhook anyway (Razorpay will retry otherwise) but log loud,
-      // this needs manual investigation, not a silent drop.
-      console.error('❌ Webhook payment.captured missing/invalid bookingId in notes:', payment?.id);
-      return res.status(200).json({ success: true });
-    }
-
-    const { lockLost } = await markLeadPaid({
-      bookingId,
-      orderId: payment.order_id,
-      paymentId: payment.id,
-    });
-
-    if (lockLost) {
-      console.warn(`⚠️  Booking ${bookingId} paid but lock_lost — pincode was re-sold before this webhook arrived. Flagged for manual outreach/refund.`);
+      processingStatus = 'error';
+      processingNote = `payment.captured missing/invalid bookingId in notes (payment: ${payment?.id})`;
+      console.error('❌', processingNote);
+    } else {
+      relatedBookingId = bookingId;
+      try {
+        const { lockLost } = await markLeadPaid({
+          bookingId,
+          orderId: payment.order_id,
+          paymentId: payment.id,
+        });
+        processingStatus = 'processed';
+        processingNote = lockLost
+          ? 'Marked paid, but lock_lost (pincode was re-sold before webhook arrived)'
+          : 'Marked paid successfully';
+        if (lockLost) {
+          console.warn(`⚠️  Booking ${bookingId} paid but lock_lost — flagged for manual outreach/refund.`);
+        }
+      } catch (err) {
+        processingStatus = 'error';
+        processingNote = `markLeadPaid threw: ${err.message}`;
+        console.error('❌', processingNote);
+      }
     }
   } else if (eventType === 'payment.failed') {
     const payment = event.payload?.payment?.entity;
     const bookingId = payment?.notes?.bookingId;
 
     if (bookingId && mongoose.isValidObjectId(bookingId)) {
+      relatedBookingId = bookingId;
       await DistributorLead.findOneAndUpdate(
         { _id: bookingId, status: { $ne: 'paid' } },
         { $set: { status: 'failed', leadCallStatus: 'pending_call' } }
       );
+      processingStatus = 'processed';
+      processingNote = 'Marked failed';
+    } else {
+      processingStatus = 'ignored';
+      processingNote = 'payment.failed with no bookingId in notes';
     }
   }
-  // Other event types (refund.processed, etc.) intentionally ignored for now.
 
-  // Always ack 200 quickly once processed — Razorpay retries with backoff
-  // for hours otherwise.
+  await WebhookLog.create({
+    eventType,
+    razorpayEventId: event.id,
+    signatureValid: true,
+    payload: event,
+    relatedBookingId,
+    processingStatus,
+    processingNote,
+  });
+
   res.status(200).json({ success: true });
 });

@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import DistributorLead from '../models/DistributorLead.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import WebhookLog from '../models/WebhookLog.js';
 
 const ALLOWED_CALL_STATUSES = ['not_required', 'pending_call', 'called', 'converted'];
 
@@ -87,4 +88,23 @@ export const updateLeadCallStatus = asyncHandler(async (req, res) => {
   }
 
   res.status(200).json({ success: true, data: lead });
+});
+
+// GET /api/v1/admin/distributor/webhook-logs?bookingId=&page=&limit=
+export const listWebhookLogs = asyncHandler(async (req, res) => {
+  const { bookingId, page = 1, limit = 20 } = req.query;
+  const filter = {};
+  if (bookingId) filter.relatedBookingId = bookingId;
+
+  const skip = (Number(page) - 1) * Number(limit);
+  const [logs, total] = await Promise.all([
+    WebhookLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)),
+    WebhookLog.countDocuments(filter),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    data: logs,
+    pagination: { page: Number(page), limit: Number(limit), total, pages: Math.ceil(total / Number(limit)) },
+  });
 });
