@@ -28,4 +28,7 @@ export const config = {
     // different secret than keySecret above. See HLD Section 4b.
     webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
   },
+  distributor: {
+    manualPaymentMode: process.env.DISTRIBUTOR_MANUAL_PAYMENT_MODE === 'true',
+  },
 };

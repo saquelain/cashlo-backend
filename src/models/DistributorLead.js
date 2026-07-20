@@ -86,7 +86,8 @@ const distributorLeadSchema = new mongoose.Schema(
         'paid',
         'failed',
         'expired',
-        'lock_lost', // paid, but pincode was re-sold before webhook arrived — see HLD Section 5
+        'cancelled',
+        'lock_lost',
       ],
       default: 'form_submitted',
     },
@@ -98,6 +99,19 @@ const distributorLeadSchema = new mongoose.Schema(
       amount: Number, // paise
       currency: { type: String, default: 'INR' },
       receipt: String,
+    },
+    paymentMethod: {
+      type: String,
+      enum: ['razorpay', 'manual'],
+      default: 'razorpay',
+    },
+
+    manualPayment: {
+      mode: { type: String, enum: ['cash', 'qr', 'bank_transfer', 'other'] },
+      reference: { type: String, trim: true, default: '' },
+      notes: { type: String, trim: true, default: '' },
+      collectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      collectedAt: Date,
     },
 
     gst: {

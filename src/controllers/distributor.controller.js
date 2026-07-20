@@ -266,7 +266,7 @@ export const verifyOtp = asyncHandler(async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'OTP already verified',
-      data: { bookingId: lead._id },
+      data: { bookingId: lead._id, manualPayment: config.distributor.manualPaymentMode },
     });
   }
 
@@ -299,10 +299,28 @@ export const verifyOtp = asyncHandler(async (req, res) => {
   lead.otpHash = undefined;
   await lead.save();
 
+  // Lock the pincode immediately on successful verification, in BOTH modes —
+  // previously this only happened inside createOrder. The frontend advances
+  // straight from OTP-verify into the payment step anyway, so this just
+  // closes a small race window, and lets manual-mode leads skip createOrder
+  // entirely (they redirect to the "we'll call you" page instead).
+  await acquirePincodeLock({ pincode: lead.pincode, bookingId: lead._id });
+  lead.status = 'lock_acquired';
+
+  if (config.distributor.manualPaymentMode) {
+    lead.paymentMethod = 'manual';
+    lead.leadCallStatus = 'pending_call';
+    const baseAmount = Math.round(BOOKING_AMOUNT_PAISE / 1.18);
+    const gstAmount = BOOKING_AMOUNT_PAISE - baseAmount;
+    lead.gst = { baseAmount, gstAmount, totalAmount: BOOKING_AMOUNT_PAISE };
+  }
+
+  await lead.save();
+
   res.status(200).json({
     success: true,
     message: 'OTP verified successfully',
-    data: { bookingId: lead._id },
+    data: { bookingId: lead._id, manualPayment: config.distributor.manualPaymentMode },
   });
 });
 
@@ -337,12 +355,15 @@ export const createOrder = asyncHandler(async (req, res) => {
     throw error;
   }
 
-  // The critical section — see src/utils/pincodeLock.js for why this is
-  // safe under concurrent requests for the same pincode.
+  // Idempotent — verifyOtp already acquired this lead's lock; this just
+  // refreshes the TTL so Razorpay checkout gets a fresh 15-minute window.
   await acquirePincodeLock({ pincode: lead.pincode, bookingId: lead._id });
 
   lead.status = 'lock_acquired';
   await lead.save();
+
+  const baseAmount = Math.round(BOOKING_AMOUNT_PAISE / 1.18);
+  const gstAmount = BOOKING_AMOUNT_PAISE - baseAmount;
 
   let order;
   try {
@@ -353,21 +374,11 @@ export const createOrder = asyncHandler(async (req, res) => {
       notes: { bookingId: lead._id.toString(), pincode: lead.pincode },
     });
   } catch (err) {
-    // Order creation failed AFTER the lock was acquired — don't leave the
-    // lead stuck at lock_acquired with no way forward. The lock itself will
-    // still expire naturally via TTL if nothing follows this up, freeing the
-    // pincode for others; that's acceptable here, no manual cleanup needed.
     const error = new Error('Failed to create payment order. Please try again.');
     error.statusCode = 502;
     error.details = err.message;
     throw error;
   }
-
-  // NOTE: ₹1,100 GST breakup below assumes 18% — confirm the actual rate
-  // with Yasir before this matters for invoicing; it doesn't affect what's
-  // charged (always exactly ₹1,100), only how it's reported.
-  const baseAmount = Math.round(BOOKING_AMOUNT_PAISE / 1.18);
-  const gstAmount = BOOKING_AMOUNT_PAISE - baseAmount;
 
   lead.razorpay = {
     orderId: order.id,
@@ -382,6 +393,7 @@ export const createOrder = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     data: {
+      manualPayment: false,
       orderId: order.id,
       amount: BOOKING_AMOUNT_PAISE,
       currency: 'INR',

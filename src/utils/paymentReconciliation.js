@@ -1,15 +1,31 @@
 import DistributorLead from '../models/DistributorLead.js';
 import PincodeReservation from '../models/PincodeReservation.js';
-import { confirmPincodeLock } from './pincodeLock.js';
+import { acquirePincodeLock, confirmPincodeLock } from './pincodeLock.js';
 import { sendPaymentConfirmationEmail } from '../services/email.service.js';
 import { generateReceiptPdfBuffer } from '../services/receipt.service.js';
 import { uploadFile } from '../services/s3.service.js';
 
-export const markLeadPaid = async ({ bookingId, orderId, paymentId, signature }) => {
+// allowRelockIfFree: only ever passed as true from the manual "mark as paid"
+// admin action (see distributorAdmin.controller.js). Razorpay's own webhook
+// and reconciliation cron never pass this — their timing is tight enough
+// (minutes, not hours) that this scenario isn't worth the extra behavior
+// change there, and we don't want to touch that path's semantics.
+export const markLeadPaid = async ({
+  bookingId,
+  orderId,
+  paymentId,
+  signature,
+  manualPayment,
+  allowRelockIfFree = false,
+}) => {
   const setFields = { status: 'paid', leadCallStatus: 'not_required' };
   if (orderId) setFields['razorpay.orderId'] = orderId;
   if (paymentId) setFields['razorpay.paymentId'] = paymentId;
   if (signature) setFields['razorpay.signature'] = signature;
+  if (manualPayment) {
+    setFields.manualPayment = manualPayment;
+    setFields.paymentMethod = 'manual';
+  }
 
   const lead = await DistributorLead.findOneAndUpdate(
     { _id: bookingId, status: { $ne: 'paid' } },
@@ -20,13 +36,24 @@ export const markLeadPaid = async ({ bookingId, orderId, paymentId, signature })
   if (!lead) return { lead: null, lockLost: false };
 
   const reservation = await PincodeReservation.findOne({ pincode: lead.pincode });
+  let ownsReservation = reservation && String(reservation.bookingId) === String(lead._id);
 
-  if (reservation && String(reservation.bookingId) === String(lead._id)) {
+  // Reservation is gone (TTL expired) but nobody else re-booked it in the
+  // gap — only attempted on explicit admin instruction (manual payment flow).
+  if (!reservation && allowRelockIfFree) {
+    try {
+      await acquirePincodeLock({ pincode: lead.pincode, bookingId: lead._id });
+      ownsReservation = true;
+    } catch (err) {
+      // Someone grabbed it in the exact window between our check and this
+      // re-lock attempt — genuinely lost, fall through to lock_lost below.
+      ownsReservation = false;
+    }
+  }
+
+  if (ownsReservation) {
     await confirmPincodeLock({ pincode: lead.pincode, bookingId: lead._id });
 
-    // Generate + store the permanent receipt PDF. Wrapped so a storage/PDF
-    // failure never undoes the payment confirmation itself — same principle
-    // as the email below.
     let receiptUrl = '';
     try {
       const pdfBuffer = await generateReceiptPdfBuffer({
@@ -40,8 +67,8 @@ export const markLeadPaid = async ({ bookingId, orderId, paymentId, signature })
         baseAmount: lead.gst?.baseAmount ?? 0,
         gstAmount: lead.gst?.gstAmount ?? 0,
         totalAmount: lead.gst?.totalAmount ?? lead.razorpay?.amount ?? 0,
-        paymentId: lead.razorpay?.paymentId ?? '',
-        orderId: lead.razorpay?.orderId ?? '',
+        paymentId: lead.razorpay?.paymentId || manualPayment?.reference || 'Manual Payment',
+        orderId: lead.razorpay?.orderId || (manualPayment ? `MANUAL-${(manualPayment.mode || '').toUpperCase()}` : ''),
         date: new Date().toISOString(),
       });
 
@@ -60,7 +87,7 @@ export const markLeadPaid = async ({ bookingId, orderId, paymentId, signature })
       district: lead.district,
       state: lead.state,
       amount: lead.gst?.totalAmount ?? lead.razorpay?.amount,
-      paymentId: lead.razorpay?.paymentId,
+      paymentId: lead.razorpay?.paymentId || manualPayment?.reference || 'Manual Payment',
       receiptUrl,
     });
 
@@ -68,7 +95,9 @@ export const markLeadPaid = async ({ bookingId, orderId, paymentId, signature })
   }
 
   lead.status = 'lock_lost';
-  lead.lostReason = 'Pincode was re-sold before payment was confirmed';
+  lead.lostReason = reservation
+    ? 'Pincode was re-sold before payment was confirmed'
+    : 'Pincode reservation expired and was re-sold before payment was confirmed';
   lead.leadCallStatus = 'pending_call';
   await lead.save();
 
